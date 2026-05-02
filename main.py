@@ -1,5 +1,8 @@
 import asyncio
 import datetime
+from zoneinfo import ZoneInfo
+
+CN_TZ = ZoneInfo("Asia/Shanghai")
 
 import aiohttp
 
@@ -39,7 +42,7 @@ class PushPlugin(Star):
             try:
                 if not self.config.get("push_enabled", True):
                     continue
-                now = datetime.datetime.now()
+                now = datetime.datetime.now(CN_TZ)
                 target_str = self.config.get("push_time", "08:00").replace("：", ":").strip()
                 h, m = map(int, target_str.split(":"))
                 target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
@@ -288,7 +291,7 @@ class PushPlugin(Star):
 
         all_targets = self._get_all_targets(subscribers)
 
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(CN_TZ)
         try:
             h, m = map(int, push_time.replace("：", ":").strip().split(":"))
             target = now.replace(hour=h, minute=m, second=0, microsecond=0)
