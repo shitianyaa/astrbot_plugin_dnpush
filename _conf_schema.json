@@ -9,7 +9,7 @@
     "description": "每日推送时间",
     "type": "string",
     "default": "08:00",
-    "hint": "格式 HH:MM（如 08:00、20:30），使用本地时间"
+    "hint": "格式 HH:MM（如 08:00、20:30），使用 Asia/Shanghai 时区"
   },
   "news_api_url": {
     "description": "新闻 API 地址",
@@ -47,7 +47,7 @@
     "description": "推送目标列表",
     "type": "list",
     "default": [],
-    "hint": "配置固定的推送目标（群号或QQ号），格式：group:群号 或 private:QQ号，每行一个"
+    "hint": "固定推送目标，格式：group:群/频道ID 或 private:用户ID，每行一个。各平台 ID 含义不同（QQ 群号、Telegram chat_id 等），请按所在平台填写"
   },
   "platform_id": {
     "description": "平台适配器 ID",

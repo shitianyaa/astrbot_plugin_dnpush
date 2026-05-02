@@ -138,12 +138,12 @@ class PushPlugin(Star):
                 ident = t.split(":", 1)[1].strip()
                 umo = f"{plat}:FriendMessage:{ident}"
             elif t.isdigit():
-                # 兼容只填了纯数字的情况，默认按群号处理
-                logger.info(f"[Push] 目标 {t!r} 未带前缀，默认按群号处理；建议改为 'group:{t}'")
+                # 兼容只填了纯数字的情况，默认按群/频道处理
+                logger.info(f"[Push] 目标 {t!r} 未带前缀，默认按群/频道处理；建议改为 'group:{t}'")
                 umo = f"{plat}:GroupMessage:{t}"
             else:
                 logger.warning(
-                    f"[Push] 跳过格式错误的目标: {raw!r}，应为 'group:群号' 或 'private:QQ号'"
+                    f"[Push] 跳过格式错误的目标: {raw!r}，应为 'group:群/频道ID' 或 'private:用户ID'"
                 )
                 continue
             if umo not in targets:

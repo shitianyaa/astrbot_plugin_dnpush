@@ -1,78 +1,96 @@
 # astrbot_plugin_dnpush
 
-AstrBot 每日新闻和一言定时推送插件，支持自定义 cron 定时任务、订阅管理。
+AstrBot 每日新闻 + 一言定时推送插件。每天定点向指定群 / 私聊推送 ALAPI 早报和一言。
 
 ## 功能
 
-- 每日早报推送（基于 ALAPI）
-- 一言推送（基于 hitokoto.cn）
-- 自定义 cron 定时表达式
-- 群聊/私聊订阅管理
-- 支持配置固定推送目标（群号/QQ号）
-- 支持 json 文字和 image 图片两种早报格式
+- 每日早报推送（基于 [ALAPI](https://alapi.cn)，支持文字 / 图片两种格式）
+- 一言推送（基于 [hitokoto.cn](https://hitokoto.cn)，支持分类筛选）
+- HH:MM 每日定时（北京时间，分钟级精度）
+- 群聊 / 私聊订阅命令，订阅信息持久化
+- 也可在配置里写死推送目标
+- 一键开关定时推送，不影响手动推送
 
 ## 安装
 
-1. 下载插件 zip 包
-2. 在 AstrBot WebUI 插件管理页面上传安装
-3. 配置 ALAPI Token（在 [alapi.cn](https://alapi.cn) 注册获取）
+1. 下载插件 zip 包，AstrBot WebUI → 插件管理 → 上传安装
+2. 在 [alapi.cn](https://alapi.cn) 注册获取 Token
+3. 进入插件配置页填入 `news_api_token`，按需调整 `push_time`、`push_targets` 等
 
 ## 配置项
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `news_api_url` | 新闻 API 地址 | 留空使用 ALAPI 默认接口 |
+| `push_enabled` | 启用定时推送（关闭后手动指令不受影响） | `true` |
+| `push_time` | 每日推送时间，格式 `HH:MM`（北京时间） | `08:00` |
+| `news_api_url` | 新闻 API 地址 | 留空使用 `https://v3.alapi.cn/api/zaobao` |
 | `news_api_token` | ALAPI Token（必填） | - |
 | `news_format` | 返回格式：`json` 文字 / `image` 图片 | `json` |
-| `hitokoto_api_url` | 一言 API 地址 | 留空使用 hitokoto.cn |
-| `hitokoto_categories` | 一言分类，逗号分隔 | `a`（全部） |
-| `cron_expression` | Cron 定时表达式 | `0 8 * * *`（每天8点） |
-| `push_targets` | 推送目标，格式：`group:群号` 或 `private:QQ号` | 空 |
-| `push_news` | 是否推送新闻 | `true` |
-| `push_hitokoto` | 是否推送一言 | `true` |
+| `hitokoto_api_url` | 一言 API 地址 | 留空使用 `https://v1.hitokoto.cn` |
+| `hitokoto_categories` | 一言分类，多个用逗号分隔 | `a` |
+| `push_targets` | 固定推送目标列表 | `[]` |
+| `platform_id` | 平台适配器 ID | 留空自动检测 |
+| `push_news` | 定时推送中是否包含新闻 | `true` |
+| `push_hitokoto` | 定时推送中是否包含一言 | `true` |
+
+### push_targets 格式
+
+每行一个，必须带前缀：
+
+```
+group:123456789      # 群 / 频道 ID
+private:10086        # 用户 ID
+```
+
+兼容中文冒号 `group：` 和大小写。如果只填纯数字会按群 / 频道处理（会有 INFO 日志提示）。各平台 ID 含义不同（QQ 群号、Telegram chat_id、Discord channel_id 等），按你的适配器实际接受的格式填写。
+
+### platform_id 说明
+
+AstrBot 允许给同一类型的适配器起自定义 ID。如果定时推送日志里出现 `cannot find platform for session ...`，说明自动检测到的 ID 跟你实际启用的适配器对不上，需要在 AstrBot 「消息平台」页面查看你启用的适配器 ID（如 `aiocqhttp`、`napcat` 等），手动填到 `platform_id` 里。
 
 ## 指令
 
+所有指令都在 `/push` 指令组下：
+
 | 指令 | 说明 |
 |------|------|
-| `/push news` | 手动推送每日早报 |
-| `/push hitokoto` | 手动推送一言 |
-| `/push all` | 推送早报 + 一言 |
-| `/push subscribe` | 订阅当前会话的定时推送 |
-| `/push unsubscribe` | 取消当前会话的定时推送 |
-| `/push schedule` | 查看定时任务状态 |
-| `/push targets` | 查看所有推送目标 |
+| `/push news` | 手动推送一次每日早报 |
+| `/push hitokoto` | 手动推送一次一言 |
+| `/push all` | 手动推送早报 + 一言 |
+| `/push subscribe` | 在当前会话订阅每日定时推送 |
+| `/push unsubscribe` | 取消当前会话的订阅 |
+| `/push schedule` | 查看定时任务状态、下次推送时间、平台 ID 等 |
+| `/push targets` | 查看所有推送目标（配置目标 + 订阅会话） |
 
 ## 一言分类
 
-| 参数 | 分类 |
-|------|------|
-| `a` | 全部 |
-| `b` | 动画 |
-| `c` | 游戏 |
-| `d` | 文学 |
-| `e` | 原创 |
-| `f` | 网络 |
-| `g` | 其他 |
-| `h` | 影视 |
-| `i` | 诗词 |
-| `j` | 哲学 |
-| `k` | 科学 |
+| 参数 | 分类 | 参数 | 分类 |
+|------|------|------|------|
+| `a` | 全部 | `g` | 其他 |
+| `b` | 动画 | `h` | 影视 |
+| `c` | 游戏 | `i` | 诗词 |
+| `d` | 文学 | `j` | 哲学 |
+| `e` | 原创 | `k` | 科学 |
+| `f` | 网络 | | |
 
-## Cron 表达式示例
+多分类用逗号分隔，如 `a,d,i`。
 
-| 表达式 | 说明 |
-|--------|------|
-| `0 8 * * *` | 每天早上 8 点 |
-| `0 8,12,18 * * *` | 每天 8、12、18 点 |
-| `30 7 * * 1-5` | 工作日早上 7:30 |
-| `0 9 * * 1` | 每周一早上 9 点 |
+## 时区说明
+
+定时任务使用 `Asia/Shanghai` 时区。在 Linux 上一般无需额外配置；Windows 上若提示找不到时区数据，会自动回退到固定 UTC+8（同等效果），也可以执行 `pip install tzdata` 启用完整 IANA 时区数据库。
 
 ## 依赖
 
 - `aiohttp`
-- `croniter`
+- `tzdata`（仅 Windows，自动安装）
 
 ## 平台支持
 
-- OneBot v11（aiocqhttp）
+`all` —— AstrBot 已接入的所有消息平台均可使用。
+
+- **订阅式推送**（`/push subscribe`）：使用会话的 `unified_msg_origin`，所有平台通用，零配置
+- **固定目标推送**（`push_targets`）：默认按 `aiocqhttp` 风格组装 `unified_msg_origin`；其他平台请通过 `platform_id` 指定适配器 ID，或直接用订阅式
+
+## 反馈
+
+Issue / PR 欢迎到 [GitHub 仓库](https://github.com/shitianyaa/astrbot_plugin_dnpush) 提交。
