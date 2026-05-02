@@ -174,7 +174,9 @@ class PushPlugin(Star):
         parts = []
         if date:
             parts.append(f"📅 {date}")
-        if news:
+        if isinstance(news, list):
+            parts.extend(str(item) for item in news)
+        elif news:
             parts.append(news)
         if weiyu:
             parts.append(f"\n💡 {weiyu}")
