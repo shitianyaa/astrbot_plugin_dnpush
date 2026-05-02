@@ -1,8 +1,7 @@
 import asyncio
-from datetime import datetime, timezone
+import datetime
 
 import aiohttp
-from croniter import croniter
 
 from astrbot.api.event import MessageChain, filter, AstrMessageEvent
 from astrbot.api.message_components import Image, Plain
@@ -10,16 +9,19 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
 
 
-@register("astrbot_plugin_dnpush", "shitianyaa", "每日新闻和一言定时推送插件", "1.2.2")
+@register("astrbot_plugin_dnpush", "shitianyaa", "每日新闻和一言定时推送插件", "1.3.0")
 class PushPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
         self._scheduler_task: asyncio.Task | None = None
+        self._last_push_date = None
+        self.session: aiohttp.ClientSession | None = None
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
         """AstrBot 初始化完成后启动定时任务"""
+        self.session = aiohttp.ClientSession()
         self._start_scheduler()
 
     def _start_scheduler(self):
@@ -27,38 +29,52 @@ class PushPlugin(Star):
         if self._scheduler_task and not self._scheduler_task.done():
             self._scheduler_task.cancel()
         self._scheduler_task = asyncio.create_task(self._scheduler_loop())
-        logger.info(f"[Push] 定时任务已启动，cron: {self.config.get('cron_expression', '0 8 * * *')}")
+        push_time = self.config.get("push_time", "08:00")
+        logger.info(f"[Push] 定时任务已启动，推送时间: {push_time}")
 
     async def _scheduler_loop(self):
-        """定时任务循环"""
-        cron_expr = self.config.get("cron_expression", "0 8 * * *")
+        """定时任务循环，每 30 秒检查一次是否到达推送时间"""
         while True:
+            await asyncio.sleep(30)
             try:
-                now = datetime.now(timezone.utc)
-                cron = croniter(cron_expr, now)
-                next_time = cron.get_next(datetime)
-                wait_seconds = (next_time - now).total_seconds()
-                logger.info(f"[Push] 下次推送时间: {next_time.isoformat()}, 等待 {wait_seconds:.0f} 秒")
-                await asyncio.sleep(wait_seconds)
-                await self._do_push()
+                if not self.config.get("push_enabled", True):
+                    continue
+                now = datetime.datetime.now()
+                target_str = self.config.get("push_time", "08:00").replace("：", ":").strip()
+                h, m = map(int, target_str.split(":"))
+                target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
+                if now >= target_time and self._last_push_date != now.date():
+                    self._last_push_date = now.date()
+                    logger.info(f"[Push] 到达推送时间 {target_str}，开始推送")
+                    await self._do_push()
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"[Push] 定时任务异常: {e}")
-                await asyncio.sleep(60)
+                logger.error(f"[Push] 调度器异常: {e}")
+
+    def _get_platform(self) -> str:
+        """自动检测当前平台"""
+        try:
+            all_plats = self.context.get_all_platforms()
+            if all_plats:
+                return list(all_plats.keys())[0]
+        except Exception:
+            pass
+        return "aiocqhttp"
 
     def _get_all_targets(self, subscribers: list[str]) -> list[str]:
         """获取所有推送目标：配置目标 + 订阅者，去重"""
         targets = list(subscribers)
         config_targets = self.config.get("push_targets", [])
+        plat = self._get_platform()
         for t in config_targets:
             t = t.strip()
             if not t:
                 continue
             if t.startswith("group:"):
-                umo = f"aiocqhttp:group:{t[6:]}"
+                umo = f"{plat}:GroupMessage:{t[6:]}"
             elif t.startswith("private:"):
-                umo = f"aiocqhttp:private:{t[8:]}"
+                umo = f"{plat}:FriendMessage:{t[8:]}"
             else:
                 continue
             if umo not in targets:
@@ -102,6 +118,7 @@ class PushPlugin(Star):
                 success += 1
             except Exception as e:
                 logger.warning(f"[Push] 推送失败 {umo}: {e}")
+            await asyncio.sleep(1.5)
 
         logger.info(f"[Push] 定时推送完成，成功 {success}/{len(targets)}")
 
@@ -119,17 +136,15 @@ class PushPlugin(Star):
         data = {"token": token, "format": fmt}
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(api_url, data=data, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    if resp.status != 200:
-                        logger.error(f"[Push] ALAPI 返回 {resp.status}")
-                        return None, None
+            async with self.session.post(api_url, data=data, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    logger.error(f"[Push] ALAPI 返回 {resp.status}")
+                    return None, None
 
-                    if fmt == "image":
-                        # image 格式会重定向到图片地址
-                        return None, str(resp.url)
+                if fmt == "image":
+                    return None, str(resp.url)
 
-                    result = await resp.json(content_type=None)
+                result = await resp.json(content_type=None)
         except Exception as e:
             logger.error(f"[Push] ALAPI 请求失败: {e}")
             return None, None
@@ -166,11 +181,10 @@ class PushPlugin(Star):
                 params.setdefault("c", []).append(cat)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        return None
-                    data = await resp.json(content_type=None)
+            async with self.session.get(api_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json(content_type=None)
         except Exception as e:
             logger.error(f"[Push] 一言 API 请求失败: {e}")
             return None
@@ -246,8 +260,8 @@ class PushPlugin(Star):
             return
         subscribers.append(umo)
         await self.put_kv_data("subscribers", subscribers)
-        cron_expr = self.config.get("cron_expression", "0 8 * * *")
-        yield event.plain_result(f"订阅成功！定时推送时间: {cron_expr}")
+        push_time = self.config.get("push_time", "08:00")
+        yield event.plain_result(f"订阅成功！每日推送时间: {push_time}")
 
     @push.command("unsubscribe")
     async def push_unsubscribe(self, event: AstrMessageEvent):
@@ -264,22 +278,32 @@ class PushPlugin(Star):
     @push.command("schedule")
     async def push_schedule(self, event: AstrMessageEvent):
         """查看定时任务状态"""
-        cron_expr = self.config.get("cron_expression", "0 8 * * *")
+        push_time = self.config.get("push_time", "08:00")
+        push_enabled = self.config.get("push_enabled", True)
         subscribers = await self.get_kv_data("subscribers", [])
         config_targets = self.config.get("push_targets", [])
         push_news = self.config.get("push_news", True)
         push_hitokoto = self.config.get("push_hitokoto", True)
         news_url = self.config.get("news_api_url", "未配置")
 
-        now = datetime.now(timezone.utc)
-        next_time = croniter(cron_expr, now).get_next(datetime)
-
         all_targets = self._get_all_targets(subscribers)
+
+        now = datetime.datetime.now()
+        try:
+            h, m = map(int, push_time.replace("：", ":").strip().split(":"))
+            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if now < target:
+                next_str = target.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                next_str = (target + datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            next_str = "时间格式错误"
 
         parts = [
             "⏰ 定时推送状态",
-            f"Cron: {cron_expr}",
-            f"下次推送: {next_time.strftime('%Y-%m-%d %H:%M:%S')} UTC",
+            f"推送时间: 每天 {push_time}",
+            f"推送状态: {'✅ 已启用' if push_enabled else '❌ 已禁用'}",
+            f"下次推送: {next_str}",
             f"推送新闻: {'✅' if push_news else '❌'}",
             f"推送一言: {'✅' if push_hitokoto else '❌'}",
             f"新闻 API: {news_url}",
@@ -326,4 +350,6 @@ class PushPlugin(Star):
                 await self._scheduler_task
             except asyncio.CancelledError:
                 pass
+        if self.session and not self.session.closed:
+            await self.session.close()
         logger.info("[Push] 插件已停止")

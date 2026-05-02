@@ -1,4 +1,16 @@
 {
+  "push_enabled": {
+    "description": "启用定时推送",
+    "type": "bool",
+    "default": true,
+    "hint": "关闭后定时推送将暂停，手动推送不受影响"
+  },
+  "push_time": {
+    "description": "每日推送时间",
+    "type": "string",
+    "default": "08:00",
+    "hint": "格式 HH:MM（如 08:00、20:30），使用本地时间"
+  },
   "news_api_url": {
     "description": "新闻 API 地址",
     "type": "string",
@@ -30,12 +42,6 @@
     "type": "string",
     "default": "a",
     "hint": "分类参数，多个用逗号分隔。a=全部,b=动画,c=游戏,d=文学,e=原创,f=网络,g=其他,h=影视,i=诗词,j=哲学,k=科学"
-  },
-  "cron_expression": {
-    "description": "定时推送 Cron 表达式",
-    "type": "string",
-    "default": "0 8 * * *",
-    "hint": "标准 5 位 cron 表达式（分 时 日 月 周），默认每天早上 8 点"
   },
   "push_targets": {
     "description": "推送目标列表",
