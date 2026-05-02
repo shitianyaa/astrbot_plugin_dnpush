@@ -33,27 +33,38 @@ class PushPlugin(Star):
             self._scheduler_task.cancel()
         self._scheduler_task = asyncio.create_task(self._scheduler_loop())
         push_time = self.config.get("push_time", "08:00")
-        logger.info(f"[Push] 定时任务已启动，推送时间: {push_time}")
+        push_enabled = self.config.get("push_enabled", True)
+        logger.info(f"[Push] 定时任务已启动，推送时间: {push_time}，启用: {push_enabled}，任务状态: {self._scheduler_task}")
 
     async def _scheduler_loop(self):
         """定时任务循环，每 30 秒检查一次是否到达推送时间"""
+        logger.info("[Push] 调度器循环已启动")
         while True:
             await asyncio.sleep(30)
             try:
-                if not self.config.get("push_enabled", True):
+                push_enabled = self.config.get("push_enabled", True)
+                if not push_enabled:
+                    logger.debug("[Push] 定时推送已禁用，跳过")
                     continue
                 now = datetime.datetime.now(CN_TZ)
                 target_str = self.config.get("push_time", "08:00").replace("：", ":").strip()
                 h, m = map(int, target_str.split(":"))
                 target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                if now >= target_time and self._last_push_date != now.date():
+                reached = now >= target_time
+                already_pushed = self._last_push_date == now.date()
+                logger.debug(
+                    f"[Push] 检查: 当前={now.strftime('%H:%M:%S')}, "
+                    f"目标={target_str}, 已到={reached}, 已推送={already_pushed}, "
+                    f"last_push_date={self._last_push_date}"
+                )
+                if reached and not already_pushed:
                     self._last_push_date = now.date()
                     logger.info(f"[Push] 到达推送时间 {target_str}，开始推送")
                     await self._do_push()
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"[Push] 调度器异常: {e}")
+                logger.error(f"[Push] 调度器异常: {e}", exc_info=True)
 
     def _get_platform(self) -> str:
         """自动检测当前平台"""
