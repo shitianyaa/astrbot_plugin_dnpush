@@ -1,8 +1,6 @@
 import asyncio
 import datetime
-from zoneinfo import ZoneInfo
-
-CN_TZ = ZoneInfo("Asia/Shanghai")
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
 
@@ -10,6 +8,13 @@ from astrbot.api.event import MessageChain, filter, AstrMessageEvent
 from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, AstrBotConfig
+
+try:
+    CN_TZ = ZoneInfo("Asia/Shanghai")
+except ZoneInfoNotFoundError:
+    # Windows 上若未安装 tzdata，回退到固定 UTC+8 偏移，避免插件加载失败
+    logger.warning("[Push] 未找到 IANA 时区数据库，回退到固定 UTC+8。建议: pip install tzdata")
+    CN_TZ = datetime.timezone(datetime.timedelta(hours=8), name="Asia/Shanghai")
 
 
 @register("astrbot_plugin_dnpush", "shitianyaa", "每日新闻和一言定时推送插件", "1.3.0")
@@ -19,12 +24,21 @@ class PushPlugin(Star):
         self.config = config
         self._scheduler_task: asyncio.Task | None = None
         self._last_push_date = None
-        self.session = aiohttp.ClientSession()
+        self.session: aiohttp.ClientSession | None = None
+
+    async def initialize(self):
+        """插件加载时调用（每次加载/重载都会触发，比 on_astrbot_loaded 更可靠）"""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        self._start_scheduler()
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
-        """AstrBot 初始化完成后启动定时任务"""
-        self._start_scheduler()
+        """AstrBot 启动完成后兜底启动一次（防止 initialize 早于事件循环就绪的情况）"""
+        if self._scheduler_task is None or self._scheduler_task.done():
+            if self.session is None or self.session.closed:
+                self.session = aiohttp.ClientSession()
+            self._start_scheduler()
 
     def _start_scheduler(self):
         """启动定时推送调度器"""
@@ -135,6 +149,12 @@ class PushPlugin(Star):
 
         logger.info(f"[Push] 定时推送完成，成功 {success}/{len(targets)}")
 
+    def _ensure_session(self) -> aiohttp.ClientSession:
+        """确保 session 已创建（懒加载，兼容 initialize 之前的指令调用）"""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
     # ========== 数据获取 ==========
 
     async def _fetch_news(self) -> tuple[str | None, str | None]:
@@ -149,7 +169,8 @@ class PushPlugin(Star):
         data = {"token": token, "format": fmt}
 
         try:
-            async with self.session.post(api_url, data=data, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            session = self._ensure_session()
+            async with session.post(api_url, data=data, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status != 200:
                     logger.error(f"[Push] ALAPI 返回 {resp.status}")
                     return None, None
@@ -196,7 +217,8 @@ class PushPlugin(Star):
                 params.setdefault("c", []).append(cat)
 
         try:
-            async with self.session.get(api_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            session = self._ensure_session()
+            async with session.get(api_url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
                     return None
                 data = await resp.json(content_type=None)
@@ -365,6 +387,6 @@ class PushPlugin(Star):
                 await self._scheduler_task
             except asyncio.CancelledError:
                 pass
-        if self.session and not self.session.closed:
+        if self.session is not None and not self.session.closed:
             await self.session.close()
         logger.info("[Push] 插件已停止")
