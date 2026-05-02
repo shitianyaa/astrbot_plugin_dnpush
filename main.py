@@ -25,16 +25,25 @@ class PushPlugin(Star):
         self._scheduler_task: asyncio.Task | None = None
         self._last_push_date = None
         self.session: aiohttp.ClientSession | None = None
+        # 兜底层 1: 构造器里直接尝试起调度器（参考其他插件做法）
+        # 若此时 event loop 还没就绪会抛 RuntimeError，留给 initialize 处理
+        try:
+            self._scheduler_task = asyncio.create_task(self._scheduler_loop())
+            logger.info("[Push] 调度器已在 __init__ 启动")
+        except RuntimeError:
+            logger.debug("[Push] __init__ 阶段无运行中事件循环，等待 initialize 启动")
 
     async def initialize(self):
         """插件加载时调用（每次加载/重载都会触发，比 on_astrbot_loaded 更可靠）"""
         if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession()
-        self._start_scheduler()
+        # 兜底层 2: __init__ 那次 create_task 若失败（无 event loop），这里补上
+        if self._scheduler_task is None or self._scheduler_task.done():
+            self._start_scheduler()
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
-        """AstrBot 启动完成后兜底启动一次（防止 initialize 早于事件循环就绪的情况）"""
+        """兜底层 3: AstrBot 启动完成后再补一次（应对 initialize 早于事件循环就绪的极端情况）"""
         if self._scheduler_task is None or self._scheduler_task.done():
             if self.session is None or self.session.closed:
                 self.session = aiohttp.ClientSession()
