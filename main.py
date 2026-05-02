@@ -80,16 +80,19 @@ class PushPlugin(Star):
                 logger.error(f"[Push] 调度器异常: {e}", exc_info=True)
 
     def _get_platform(self) -> str:
-        """自动检测当前平台"""
+        """获取推送使用的平台适配器 ID。优先使用用户配置，其次自动检测。"""
+        # 1. 用户在配置里手动指定的优先
+        configured = (self.config.get("platform_id", "") or "").strip()
+        if configured:
+            return configured
+        # 2. 自动检测：兼容 list[Platform] 和 dict[str, Platform] 两种返回
         try:
             all_plats = self.context.get_all_platforms()
             if not all_plats:
                 return "aiocqhttp"
-            # 兼容 list[Platform] 和 dict[str, Platform] 两种返回类型
             if isinstance(all_plats, dict):
                 return next(iter(all_plats.keys()))
             first = all_plats[0]
-            # 平台对象通常有 meta().name 或 .platform_name 属性
             for attr in ("platform_name", "name"):
                 val = getattr(first, attr, None)
                 if isinstance(val, str) and val:
@@ -101,7 +104,7 @@ class PushPlugin(Star):
                 if isinstance(name, str) and name:
                     return name
         except Exception as e:
-            logger.debug(f"[Push] 平台检测失败，使用默认 aiocqhttp: {e}")
+            logger.debug(f"[Push] 平台自动检测失败: {e}")
         return "aiocqhttp"
 
     def _get_all_targets(self, subscribers: list[str]) -> list[str]:
@@ -375,6 +378,7 @@ class PushPlugin(Star):
             f"推送新闻: {'✅' if push_news else '❌'}",
             f"推送一言: {'✅' if push_hitokoto else '❌'}",
             f"新闻 API: {news_url}",
+            f"平台适配器 ID: {self._get_platform()}",
             f"配置目标: {len(config_targets)} 个",
             f"订阅会话: {len(subscribers)} 个",
             f"总推送目标: {len(all_targets)} 个",

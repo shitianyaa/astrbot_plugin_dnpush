@@ -49,6 +49,12 @@
     "default": [],
     "hint": "配置固定的推送目标（群号或QQ号），格式：group:群号 或 private:QQ号，每行一个"
   },
+  "platform_id": {
+    "description": "平台适配器 ID",
+    "type": "string",
+    "default": "",
+    "hint": "AstrBot「消息平台」页面里你启用的适配器 ID（不是适配器类型！）。常见: aiocqhttp、napcat、qq_official 等。留空则自动检测，自动检测失败时请手动填写"
+  },
   "push_news": {
     "description": "定时推送新闻",
     "type": "bool",
