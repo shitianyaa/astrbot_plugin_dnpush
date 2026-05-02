@@ -19,12 +19,11 @@ class PushPlugin(Star):
         self.config = config
         self._scheduler_task: asyncio.Task | None = None
         self._last_push_date = None
-        self.session: aiohttp.ClientSession | None = None
+        self.session = aiohttp.ClientSession()
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
         """AstrBot 初始化完成后启动定时任务"""
-        self.session = aiohttp.ClientSession()
         self._start_scheduler()
 
     def _start_scheduler(self):
