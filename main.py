@@ -83,10 +83,25 @@ class PushPlugin(Star):
         """自动检测当前平台"""
         try:
             all_plats = self.context.get_all_platforms()
-            if all_plats:
-                return list(all_plats.keys())[0]
-        except Exception:
-            pass
+            if not all_plats:
+                return "aiocqhttp"
+            # 兼容 list[Platform] 和 dict[str, Platform] 两种返回类型
+            if isinstance(all_plats, dict):
+                return next(iter(all_plats.keys()))
+            first = all_plats[0]
+            # 平台对象通常有 meta().name 或 .platform_name 属性
+            for attr in ("platform_name", "name"):
+                val = getattr(first, attr, None)
+                if isinstance(val, str) and val:
+                    return val
+            meta = getattr(first, "meta", None)
+            if callable(meta):
+                m = meta()
+                name = getattr(m, "name", None)
+                if isinstance(name, str) and name:
+                    return name
+        except Exception as e:
+            logger.debug(f"[Push] 平台检测失败，使用默认 aiocqhttp: {e}")
         return "aiocqhttp"
 
     def _get_all_targets(self, subscribers: list[str]) -> list[str]:
@@ -94,18 +109,34 @@ class PushPlugin(Star):
         targets = list(subscribers)
         config_targets = self.config.get("push_targets", [])
         plat = self._get_platform()
-        for t in config_targets:
-            t = t.strip()
+        logger.debug(f"[Push] 解析推送目标: 平台={plat}, 配置={config_targets}, 订阅={subscribers}")
+        for raw in config_targets:
+            if not isinstance(raw, str):
+                logger.warning(f"[Push] 跳过非字符串目标: {raw!r}")
+                continue
+            # 兼容中文冒号、首尾空白、大小写
+            t = raw.strip().replace("：", ":")
             if not t:
                 continue
-            if t.startswith("group:"):
-                umo = f"{plat}:GroupMessage:{t[6:]}"
-            elif t.startswith("private:"):
-                umo = f"{plat}:FriendMessage:{t[8:]}"
+            lower = t.lower()
+            if lower.startswith("group:"):
+                ident = t.split(":", 1)[1].strip()
+                umo = f"{plat}:GroupMessage:{ident}"
+            elif lower.startswith("private:"):
+                ident = t.split(":", 1)[1].strip()
+                umo = f"{plat}:FriendMessage:{ident}"
+            elif t.isdigit():
+                # 兼容只填了纯数字的情况，默认按群号处理
+                logger.info(f"[Push] 目标 {t!r} 未带前缀，默认按群号处理；建议改为 'group:{t}'")
+                umo = f"{plat}:GroupMessage:{t}"
             else:
+                logger.warning(
+                    f"[Push] 跳过格式错误的目标: {raw!r}，应为 'group:群号' 或 'private:QQ号'"
+                )
                 continue
             if umo not in targets:
                 targets.append(umo)
+        logger.debug(f"[Push] 最终推送目标: {targets}")
         return targets
 
     async def _do_push(self):
