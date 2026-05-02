@@ -1,0 +1,14 @@
+name: astrbot_plugin_dnpush
+version: 1.2.2
+description: 每日新闻和一言定时推送插件，支持 ALAPI、cron 定时任务、订阅管理
+author: shitianyaa
+repo: https://github.com/shitianyaa/astrbot_plugin_dnpush
+keywords:
+  - news
+  - hitokoto
+  - push
+  - 定时推送
+  - 一言
+  - 新闻
+support_platforms:
+  - aiocqhttp

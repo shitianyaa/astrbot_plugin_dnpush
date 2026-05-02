@@ -1,0 +1,56 @@
+{
+  "news_api_url": {
+    "description": "新闻 API 地址",
+    "type": "string",
+    "default": "",
+    "hint": "留空使用默认 ALAPI 接口（https://v3.alapi.cn/api/zaobao）"
+  },
+  "news_api_token": {
+    "description": "ALAPI Token",
+    "type": "string",
+    "default": "",
+    "obvious_hint": true,
+    "hint": "ALAPI 平台的 Token，在 alapi.cn 注册后获取"
+  },
+  "news_format": {
+    "description": "新闻返回格式",
+    "type": "string",
+    "default": "json",
+    "options": ["json", "image"],
+    "hint": "json 返回文字格式，image 返回早报图片"
+  },
+  "hitokoto_api_url": {
+    "description": "一言 API 地址",
+    "type": "string",
+    "default": "",
+    "hint": "留空使用默认接口（https://v1.hitokoto.cn）"
+  },
+  "hitokoto_categories": {
+    "description": "一言分类",
+    "type": "string",
+    "default": "a",
+    "hint": "分类参数，多个用逗号分隔。a=全部,b=动画,c=游戏,d=文学,e=原创,f=网络,g=其他,h=影视,i=诗词,j=哲学,k=科学"
+  },
+  "cron_expression": {
+    "description": "定时推送 Cron 表达式",
+    "type": "string",
+    "default": "0 8 * * *",
+    "hint": "标准 5 位 cron 表达式（分 时 日 月 周），默认每天早上 8 点"
+  },
+  "push_targets": {
+    "description": "推送目标列表",
+    "type": "list",
+    "default": [],
+    "hint": "配置固定的推送目标（群号或QQ号），格式：group:群号 或 private:QQ号，每行一个"
+  },
+  "push_news": {
+    "description": "定时推送新闻",
+    "type": "bool",
+    "default": true
+  },
+  "push_hitokoto": {
+    "description": "定时推送一言",
+    "type": "bool",
+    "default": true
+  }
+}
