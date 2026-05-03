@@ -477,14 +477,21 @@ class PushPlugin(Star):
             if news_img_path:
                 self._cleanup_temp_files([news_img_path])
 
+    async def _build_hitokoto_result(self, event: AstrMessageEvent):
+        hitokoto = await self._fetch_hitokoto()
+        if hitokoto:
+            return event.plain_result(f"💬 一言\n{hitokoto}")
+        return event.plain_result("一言获取失败，请检查 API 配置")
+
     @push.command("hitokoto")
     async def push_hitokoto(self, event: AstrMessageEvent):
         """手动推送一言"""
-        hitokoto = await self._fetch_hitokoto()
-        if hitokoto:
-            yield event.plain_result(f"💬 一言\n{hitokoto}")
-        else:
-            yield event.plain_result("一言获取失败，请检查 API 配置")
+        yield await self._build_hitokoto_result(event)
+
+    @push.command("yy")
+    async def push_yy(self, event: AstrMessageEvent):
+        """手动推送一言"""
+        yield await self._build_hitokoto_result(event)
 
     @push.command("all")
     async def push_all(self, event: AstrMessageEvent):

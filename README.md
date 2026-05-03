@@ -62,7 +62,7 @@ aiocqhttp:GroupMessage:123       # 完整的 unified_msg_origin，原样使用
 | 指令 | 说明 |
 |------|------|
 | `/push news` | 手动推送一次每日早报 |
-| `/push hitokoto` | 手动推送一次一言 |
+| `/push yy` / `/push hitokoto` | 手动推送一次一言 |
 | `/push all` | 手动推送早报 + 一言 |
 | `/push subscribe` | 在当前会话订阅每日定时推送 |
 | `/push unsubscribe` | 取消当前会话的订阅 |
