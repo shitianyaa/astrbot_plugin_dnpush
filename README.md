@@ -91,7 +91,7 @@ aiocqhttp:GroupMessage:123       # 完整的 unified_msg_origin，原样使用
 
 ## 平台支持
 
-`all` —— AstrBot 已接入的所有消息平台均可使用。
+AstrBot 已接入的所有消息平台均可使用。
 
 - **订阅式推送**（`/push subscribe`）：使用会话的 `unified_msg_origin`，所有平台通用，零配置
 - **固定目标推送**（`push_targets`）：每条目独立指定平台，可以同时往多个平台推送；未指定时使用 `platform_id` 作为默认平台
