@@ -23,13 +23,13 @@ except ZoneInfoNotFoundError:
 DEFAULT_PUSH_TIME = "08:00"
 DEFAULT_NEWS_URL = "https://v3.alapi.cn/api/zaobao"
 DEFAULT_HITOKOTO_URL = "https://v1.hitokoto.cn"
-SCHEDULER_POLL_SECONDS = 30  # 调度器轮询间隔
+SCHEDULER_POLL_SECONDS = 30  # 平时轮询间隔
+SCHEDULER_COOLDOWN_SECONDS = 60  # 推送后睡过整个目标分钟，避免同分钟内重复触发
 DEFAULT_CHAIN_INTERVAL = 1.0  # 同一目标多条消息之间的默认间隔
 DEFAULT_TARGET_INTERVAL = 1.5  # 不同目标之间的默认间隔
 CHAIN_INTERVAL_RANGE = (0.0, 30.0)  # 同目标间隔取值范围
 TARGET_INTERVAL_RANGE = (0.5, 60.0)  # 目标间间隔取值范围
 KV_KEY_SUBSCRIBERS = "subscribers"
-KV_KEY_LAST_PUSH_DATE = "last_push_date"
 
 
 @register("astrbot_plugin_dnpush", "shitianyaa", "每日新闻和一言定时推送插件", "1.3.0")
@@ -38,7 +38,6 @@ class PushPlugin(Star):
         super().__init__(context)
         self.config = config
         self._scheduler_task: asyncio.Task | None = None
-        self._last_push_date: datetime.date | None = None
         self.session: aiohttp.ClientSession | None = None
         # 兜底层 1: 构造器里就尝试起调度器
         self._ensure_scheduler_started(reason="__init__")
@@ -46,8 +45,6 @@ class PushPlugin(Star):
     async def initialize(self):
         """插件加载完成回调（每次加载/重载都触发）"""
         self._ensure_session()
-        # 恢复上次推送日期，避免重载导致同一天重复推送
-        await self._restore_last_push_date()
         # 兜底层 2
         self._ensure_scheduler_started(reason="initialize")
 
@@ -91,74 +88,37 @@ class PushPlugin(Star):
             self.session = aiohttp.ClientSession()
         return self.session
 
-    async def _restore_last_push_date(self) -> None:
-        """从 KV 恢复上次推送日期"""
-        try:
-            last_str = await self.get_kv_data(KV_KEY_LAST_PUSH_DATE, "")
-            if last_str:
-                self._last_push_date = datetime.date.fromisoformat(last_str)
-                logger.info(f"[Push] 已恢复上次推送日期: {self._last_push_date}")
-        except Exception as e:
-            logger.warning(f"[Push] 恢复 last_push_date 失败（忽略）: {e}")
-
-    async def _save_last_push_date(self, d: datetime.date) -> None:
-        """持久化上次推送日期"""
-        try:
-            await self.put_kv_data(KV_KEY_LAST_PUSH_DATE, d.isoformat())
-        except Exception as e:
-            logger.warning(f"[Push] 持久化 last_push_date 失败（忽略）: {e}")
-
     async def _scheduler_loop(self):
-        """定时任务循环：30 秒轮询，严格匹配目标分钟才触发（不补推）
+        """定时任务循环：30 秒轮询，当前分钟匹配目标分钟即触发。
 
-        匹配规则：当前 hour:minute == 目标 hour:minute 且当天未推送过。
-        错过目标分钟则等到第二天，避免重载/重启时刻晚于目标时间导致的意外补推。
+        匹配后睡满 60 秒（SCHEDULER_COOLDOWN_SECONDS）过完目标分钟，
+        避免同分钟内的下次轮询重复触发。无任何"已推送"状态。
         """
         logger.info("[Push] 调度器循环已启动")
-        # 启动时若已超过整个目标分钟（如目标 08:00，当前 08:01:30），
-        # 把 _last_push_date 标为今天，让今日不再触发
-        target = self._parse_push_time()
-        if target is not None:
-            h, m = target
-            now = datetime.datetime.now(CN_TZ)
-            target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            target_end = target_time + datetime.timedelta(minutes=1)
-            if now >= target_end and self._last_push_date != now.date():
-                logger.info(
-                    f"[Push] 启动时已过今日推送时间 {h:02d}:{m:02d}（当前 "
-                    f"{now.strftime('%H:%M')}），跳过今日，下次推送 = 明日 {h:02d}:{m:02d}"
-                )
-                self._last_push_date = now.date()
-                await self._save_last_push_date(self._last_push_date)
-
-        # 注意：先检查后睡眠，确保启动时刻正落在目标分钟内（如 08:00:30）也能触发
         while True:
             try:
+                triggered = False
                 if self.config.get("push_enabled", True):
                     target = self._parse_push_time()
                     if target is not None:
                         h, m = target
                         now = datetime.datetime.now(CN_TZ)
-                        # 严格匹配：当前小时分钟必须等于目标小时分钟
-                        if (
-                            now.hour == h
-                            and now.minute == m
-                            and self._last_push_date != now.date()
-                        ):
-                            self._last_push_date = now.date()
-                            await self._save_last_push_date(self._last_push_date)
+                        if now.hour == h and now.minute == m:
                             logger.info(
                                 f"[Push] 到达推送时间 {h:02d}:{m:02d}，开始推送"
                             )
                             await self._do_push()
+                            triggered = True
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"[Push] 调度器异常: {e}", exc_info=True)
-                # 异常后等一会儿再继续，避免日志风暴
                 await asyncio.sleep(60)
                 continue
-            await asyncio.sleep(SCHEDULER_POLL_SECONDS)
+            # 触发后睡过整个目标分钟，否则正常 30s 轮询
+            await asyncio.sleep(
+                SCHEDULER_COOLDOWN_SECONDS if triggered else SCHEDULER_POLL_SECONDS
+            )
 
     # ========== 时间 / 配置解析 ==========
 
@@ -605,7 +565,6 @@ class PushPlugin(Star):
             f"推送时间: 每天 {push_time}",
             f"推送状态: {'✅ 已启用' if push_enabled else '❌ 已禁用'}",
             f"下次推送: {next_str}",
-            f"上次推送: {self._last_push_date or '尚未推送'}",
             f"推送新闻: {'✅' if push_news_on else '❌'}",
             f"推送一言: {'✅' if push_hitokoto_on else '❌'}",
             f"新闻 API: {news_url_display}",
