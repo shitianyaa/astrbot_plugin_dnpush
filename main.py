@@ -107,34 +107,56 @@ class PushPlugin(Star):
             logger.warning(f"[Push] 持久化 last_push_date 失败（忽略）: {e}")
 
     async def _scheduler_loop(self):
-        """定时任务循环：30 秒轮询，到点且当天未推送则触发"""
+        """定时任务循环：30 秒轮询，严格匹配目标分钟才触发（不补推）
+
+        匹配规则：当前 hour:minute == 目标 hour:minute 且当天未推送过。
+        错过目标分钟则等到第二天，避免重载/重启时刻晚于目标时间导致的意外补推。
+        """
         logger.info("[Push] 调度器循环已启动")
-        while True:
-            await asyncio.sleep(SCHEDULER_POLL_SECONDS)
-            try:
-                if not self.config.get("push_enabled", True):
-                    continue
-                target = self._parse_push_time()
-                if target is None:
-                    continue
-                h, m = target
-                now = datetime.datetime.now(CN_TZ)
-                target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                if now < target_time:
-                    continue
-                if self._last_push_date == now.date():
-                    continue
-                # 满足条件：先标记后推送，避免推送过程中重入
+        # 启动时若已超过整个目标分钟（如目标 08:00，当前 08:01:30），
+        # 把 _last_push_date 标为今天，让今日不再触发
+        target = self._parse_push_time()
+        if target is not None:
+            h, m = target
+            now = datetime.datetime.now(CN_TZ)
+            target_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            target_end = target_time + datetime.timedelta(minutes=1)
+            if now >= target_end and self._last_push_date != now.date():
+                logger.info(
+                    f"[Push] 启动时已过今日推送时间 {h:02d}:{m:02d}（当前 "
+                    f"{now.strftime('%H:%M')}），跳过今日，下次推送 = 明日 {h:02d}:{m:02d}"
+                )
                 self._last_push_date = now.date()
                 await self._save_last_push_date(self._last_push_date)
-                logger.info(f"[Push] 到达推送时间 {h:02d}:{m:02d}，开始推送")
-                await self._do_push()
+
+        # 注意：先检查后睡眠，确保启动时刻正落在目标分钟内（如 08:00:30）也能触发
+        while True:
+            try:
+                if self.config.get("push_enabled", True):
+                    target = self._parse_push_time()
+                    if target is not None:
+                        h, m = target
+                        now = datetime.datetime.now(CN_TZ)
+                        # 严格匹配：当前小时分钟必须等于目标小时分钟
+                        if (
+                            now.hour == h
+                            and now.minute == m
+                            and self._last_push_date != now.date()
+                        ):
+                            self._last_push_date = now.date()
+                            await self._save_last_push_date(self._last_push_date)
+                            logger.info(
+                                f"[Push] 到达推送时间 {h:02d}:{m:02d}，开始推送"
+                            )
+                            await self._do_push()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"[Push] 调度器异常: {e}", exc_info=True)
                 # 异常后等一会儿再继续，避免日志风暴
                 await asyncio.sleep(60)
+                continue
+            await asyncio.sleep(SCHEDULER_POLL_SECONDS)
 
     # ========== 时间 / 配置解析 ==========
 
