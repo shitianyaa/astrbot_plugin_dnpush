@@ -32,6 +32,8 @@ AstrBot 每日新闻 + 一言定时推送插件。每天定点向指定群 / 私
 | `platform_id` | 默认平台适配器 ID（push_targets 中未指定平台的条目使用） | 留空自动检测 |
 | `push_news` | 定时推送中是否包含新闻 | `true` |
 | `push_hitokoto` | 定时推送中是否包含一言 | `true` |
+| `push_target_interval` | 不同目标间发送间隔（秒），防风控 | `1.5` |
+| `push_chain_interval` | 同一目标多条消息间隔（秒），防风控 | `1.0` |
 
 ### push_targets 格式
 

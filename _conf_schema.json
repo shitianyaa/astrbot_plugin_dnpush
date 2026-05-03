@@ -64,5 +64,17 @@
     "description": "定时推送一言",
     "type": "bool",
     "default": true
+  },
+  "push_target_interval": {
+    "description": "目标间推送间隔（秒）",
+    "type": "float",
+    "default": 1.5,
+    "hint": "向下一个推送目标发送之前的等待秒数，避免短时间内向多个群/用户连发触发风控。范围 0.5 ~ 60，建议 1.5~3 秒"
+  },
+  "push_chain_interval": {
+    "description": "同目标多消息间隔（秒）",
+    "type": "float",
+    "default": 1.0,
+    "hint": "同一目标连发多条消息（早报+一言）时的间隔秒数。范围 0.0 ~ 30，建议 1~2 秒"
   }
 }

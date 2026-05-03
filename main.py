@@ -24,8 +24,10 @@ DEFAULT_PUSH_TIME = "08:00"
 DEFAULT_NEWS_URL = "https://v3.alapi.cn/api/zaobao"
 DEFAULT_HITOKOTO_URL = "https://v1.hitokoto.cn"
 SCHEDULER_POLL_SECONDS = 30  # 调度器轮询间隔
-CHAIN_INTERVAL_SECONDS = 1.0  # 同一目标多条消息之间的间隔
-TARGET_INTERVAL_SECONDS = 1.5  # 不同目标之间的间隔
+DEFAULT_CHAIN_INTERVAL = 1.0  # 同一目标多条消息之间的默认间隔
+DEFAULT_TARGET_INTERVAL = 1.5  # 不同目标之间的默认间隔
+CHAIN_INTERVAL_RANGE = (0.0, 30.0)  # 同目标间隔取值范围
+TARGET_INTERVAL_RANGE = (0.5, 60.0)  # 目标间间隔取值范围
 KV_KEY_SUBSCRIBERS = "subscribers"
 KV_KEY_LAST_PUSH_DATE = "last_push_date"
 
@@ -173,6 +175,24 @@ class PushPlugin(Star):
         except Exception as e:
             logger.error(f"[Push] push_time 配置 {raw!r} 解析失败: {e}")
             return None
+
+    def _get_interval(
+        self, key: str, default: float, value_range: tuple[float, float]
+    ) -> float:
+        """读取并校验间隔类配置，超出范围或非法时使用默认值并告警"""
+        raw = self.config.get(key, default)
+        lo, hi = value_range
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            logger.warning(f"[Push] {key} 配置 {raw!r} 不是数字，使用默认 {default}s")
+            return default
+        if val < lo or val > hi:
+            logger.warning(
+                f"[Push] {key}={val} 超出允许范围 [{lo}, {hi}]，使用默认 {default}s"
+            )
+            return default
+        return val
 
     # ========== 平台 / 目标解析 ==========
 
@@ -327,21 +347,30 @@ class PushPlugin(Star):
             return
 
         try:
+            chain_interval = self._get_interval(
+                "push_chain_interval", DEFAULT_CHAIN_INTERVAL, CHAIN_INTERVAL_RANGE
+            )
+            target_interval = self._get_interval(
+                "push_target_interval", DEFAULT_TARGET_INTERVAL, TARGET_INTERVAL_RANGE
+            )
             success = 0
             for i, umo in enumerate(targets):
                 try:
                     for j, chain in enumerate(chains):
                         await self.context.send_message(umo, chain)
                         # 同一目标多条消息之间也要 sleep，避免触发风控
-                        if j < len(chains) - 1:
-                            await asyncio.sleep(CHAIN_INTERVAL_SECONDS)
+                        if j < len(chains) - 1 and chain_interval > 0:
+                            await asyncio.sleep(chain_interval)
                     success += 1
                 except Exception as e:
                     logger.warning(f"[Push] 推送失败 {umo}: {e}")
                 # 不同目标之间 sleep
-                if i < len(targets) - 1:
-                    await asyncio.sleep(TARGET_INTERVAL_SECONDS)
-            logger.info(f"[Push] 定时推送完成，成功 {success}/{len(targets)}")
+                if i < len(targets) - 1 and target_interval > 0:
+                    await asyncio.sleep(target_interval)
+            logger.info(
+                f"[Push] 定时推送完成，成功 {success}/{len(targets)}"
+                f"（目标间 {target_interval}s，同目标内 {chain_interval}s）"
+            )
         finally:
             self._cleanup_temp_files(temp_files)
 
