@@ -29,24 +29,29 @@ AstrBot 每日新闻 + 一言定时推送插件。每天定点向指定群 / 私
 | `hitokoto_api_url` | 一言 API 地址 | 留空使用 `https://v1.hitokoto.cn` |
 | `hitokoto_categories` | 一言分类，多个用逗号分隔 | `a` |
 | `push_targets` | 固定推送目标列表 | `[]` |
-| `platform_id` | 平台适配器 ID | 留空自动检测 |
+| `platform_id` | 默认平台适配器 ID（push_targets 中未指定平台的条目使用） | 留空自动检测 |
 | `push_news` | 定时推送中是否包含新闻 | `true` |
 | `push_hitokoto` | 定时推送中是否包含一言 | `true` |
 
 ### push_targets 格式
 
-每行一个，必须带前缀：
+每行一个，支持三种写法并存：
 
 ```
-group:123456789      # 群 / 频道 ID
-private:10086        # 用户 ID
+group:123456789                  # 使用 platform_id 作为平台
+private:10086                    # 同上
+napcat:group:123456789           # 单独指定平台（覆盖 platform_id）
+telegram:private:987654321       # 同上
+aiocqhttp:GroupMessage:123       # 完整的 unified_msg_origin，原样使用
 ```
 
-兼容中文冒号 `group：` 和大小写。如果只填纯数字会按群 / 频道处理（会有 INFO 日志提示）。各平台 ID 含义不同（QQ 群号、Telegram chat_id、Discord channel_id 等），按你的适配器实际接受的格式填写。
+兼容中文冒号 `：` 和大小写 `Group/Private`。各平台 ID 含义不同（QQ 群号、Telegram chat_id、Discord channel_id 等），按你的适配器实际接受的格式填写。
+
+> 想同时往多个平台推送时，给每条目加上对应的「平台ID:」前缀即可。
 
 ### platform_id 说明
 
-AstrBot 允许给同一类型的适配器起自定义 ID。如果定时推送日志里出现 `cannot find platform for session ...`，说明自动检测到的 ID 跟你实际启用的适配器对不上，需要在 AstrBot 「消息平台」页面查看你启用的适配器 ID（如 `aiocqhttp`、`napcat` 等），手动填到 `platform_id` 里。
+`push_targets` 中未指定平台的条目（如 `group:123`）会使用此值作为平台 ID。AstrBot 允许给同一类型的适配器起自定义 ID，如果定时推送日志里出现 `cannot find platform for session ...`，说明自动检测到的 ID 跟你实际启用的适配器对不上，请到 AstrBot 「消息平台」页面查看你启用的适配器 ID，手动填到 `platform_id` 里。
 
 ## 指令
 
@@ -89,7 +94,7 @@ AstrBot 允许给同一类型的适配器起自定义 ID。如果定时推送日
 `all` —— AstrBot 已接入的所有消息平台均可使用。
 
 - **订阅式推送**（`/push subscribe`）：使用会话的 `unified_msg_origin`，所有平台通用，零配置
-- **固定目标推送**（`push_targets`）：默认按 `aiocqhttp` 风格组装 `unified_msg_origin`；其他平台请通过 `platform_id` 指定适配器 ID，或直接用订阅式
+- **固定目标推送**（`push_targets`）：每条目独立指定平台，可以同时往多个平台推送；未指定时使用 `platform_id` 作为默认平台
 
 ## 反馈
 

@@ -47,13 +47,13 @@
     "description": "推送目标列表",
     "type": "list",
     "default": [],
-    "hint": "固定推送目标，格式：group:群/频道ID 或 private:用户ID，每行一个。各平台 ID 含义不同（QQ 群号、Telegram chat_id 等），请按所在平台填写"
+    "hint": "每行一个，支持以下格式：\n  group:ID 或 private:ID（使用 platform_id 作为平台）\n  平台ID:group:ID 或 平台ID:private:ID（指定平台，覆盖 platform_id）\n  平台ID:GroupMessage:ID 或 平台ID:FriendMessage:ID（完整 unified_msg_origin，原样使用）\n各平台 ID 含义不同（QQ 群号、Telegram chat_id 等）"
   },
   "platform_id": {
-    "description": "平台适配器 ID",
+    "description": "默认平台适配器 ID",
     "type": "string",
     "default": "",
-    "hint": "AstrBot「消息平台」页面里你启用的适配器 ID（不是适配器类型！）。常见: aiocqhttp、napcat、qq_official 等。留空则自动检测，自动检测失败时请手动填写"
+    "hint": "用于 push_targets 中未指定平台的条目（如 'group:123'）。AstrBot「消息平台」页面里启用的适配器 ID。常见: aiocqhttp、napcat、qq_official 等。留空则自动检测"
   },
   "push_news": {
     "description": "定时推送新闻",

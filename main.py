@@ -117,39 +117,79 @@ class PushPlugin(Star):
         return "aiocqhttp"
 
     def _get_all_targets(self, subscribers: list[str]) -> list[str]:
-        """获取所有推送目标：配置目标 + 订阅者，去重"""
+        """获取所有推送目标：配置目标 + 订阅者，去重
+
+        push_targets 支持多种格式：
+          - 'group:ID'                    使用 platform_id 作为平台
+          - 'private:ID'                  使用 platform_id 作为平台
+          - '平台ID:group:ID'             单独指定平台（覆盖 platform_id）
+          - '平台ID:private:ID'           单独指定平台
+          - '平台ID:GroupMessage:ID'      完整的 unified_msg_origin，原样使用
+          - '平台ID:FriendMessage:ID'     同上
+        """
         targets = list(subscribers)
         config_targets = self.config.get("push_targets", [])
-        plat = self._get_platform()
-        logger.debug(f"[Push] 解析推送目标: 平台={plat}, 配置={config_targets}, 订阅={subscribers}")
+        default_plat = self._get_platform()
+        logger.debug(
+            f"[Push] 解析推送目标: 默认平台={default_plat}, "
+            f"配置={config_targets}, 订阅={subscribers}"
+        )
         for raw in config_targets:
             if not isinstance(raw, str):
                 logger.warning(f"[Push] 跳过非字符串目标: {raw!r}")
                 continue
-            # 兼容中文冒号、首尾空白、大小写
+            # 兼容中文冒号、首尾空白
             t = raw.strip().replace("：", ":")
             if not t:
                 continue
-            lower = t.lower()
-            if lower.startswith("group:"):
-                ident = t.split(":", 1)[1].strip()
-                umo = f"{plat}:GroupMessage:{ident}"
-            elif lower.startswith("private:"):
-                ident = t.split(":", 1)[1].strip()
-                umo = f"{plat}:FriendMessage:{ident}"
-            elif t.isdigit():
-                # 兼容只填了纯数字的情况，默认按群/频道处理
-                logger.info(f"[Push] 目标 {t!r} 未带前缀，默认按群/频道处理；建议改为 'group:{t}'")
-                umo = f"{plat}:GroupMessage:{t}"
-            else:
+            umo = self._parse_target_to_umo(t, default_plat)
+            if umo is None:
                 logger.warning(
-                    f"[Push] 跳过格式错误的目标: {raw!r}，应为 'group:群/频道ID' 或 'private:用户ID'"
+                    f"[Push] 跳过格式错误的目标: {raw!r}，支持格式: "
+                    f"'group:ID' / 'private:ID' / '平台ID:group:ID' / "
+                    f"完整 unified_msg_origin"
                 )
                 continue
             if umo not in targets:
                 targets.append(umo)
         logger.debug(f"[Push] 最终推送目标: {targets}")
         return targets
+
+    @staticmethod
+    def _parse_target_to_umo(t: str, default_plat: str) -> str | None:
+        """把单条 push_targets 解析成 unified_msg_origin，失败返回 None"""
+        # 已是完整 UMO（包含 GroupMessage/FriendMessage 段）
+        if ":GroupMessage:" in t or ":FriendMessage:" in t:
+            return t
+        parts = t.split(":")
+        # 'group:ID' / 'private:ID' —— 两段格式，使用默认平台
+        if len(parts) == 2:
+            kind, ident = parts[0].strip().lower(), parts[1].strip()
+            if not ident:
+                return None
+            if kind == "group":
+                return f"{default_plat}:GroupMessage:{ident}"
+            if kind == "private":
+                return f"{default_plat}:FriendMessage:{ident}"
+            # 兼容只填了纯数字的两段误填？这里 len==2 才进，所以不会
+            return None
+        # '平台ID:group:ID' / '平台ID:private:ID' —— 三段格式
+        if len(parts) == 3:
+            plat, kind, ident = parts[0].strip(), parts[1].strip().lower(), parts[2].strip()
+            if not plat or not ident:
+                return None
+            if kind == "group":
+                return f"{plat}:GroupMessage:{ident}"
+            if kind == "private":
+                return f"{plat}:FriendMessage:{ident}"
+            return None
+        # 单段纯数字 —— 兼容只填了 ID 的情况，按群处理
+        if len(parts) == 1 and t.isdigit():
+            logger.info(
+                f"[Push] 目标 {t!r} 未带前缀，默认按群/频道处理；建议改为 'group:{t}'"
+            )
+            return f"{default_plat}:GroupMessage:{t}"
+        return None
 
     async def _do_push(self):
         """执行定时推送到所有目标"""
