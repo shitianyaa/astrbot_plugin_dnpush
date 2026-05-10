@@ -365,20 +365,9 @@ class PushPlugin(Star):
             return None, None
 
         data = result.get("data", "")
-        # data 可能是 str 或 list，做类型安全处理
-        if isinstance(data, list):
-            if not data:
-                logger.error("[Push] 60s API 返回空数据列表")
-                return None, None
-            image_url = str(data[0])
-        elif isinstance(data, str):
-            image_url = data
-        else:
-            logger.error(f"[Push] 60s API data 类型异常: {type(data).__name__}")
-            return None, None
-
+        image_url = self._extract_image_url(data)
         if not image_url:
-            logger.error("[Push] 60s API 未返回图片 URL")
+            logger.error("[Push] 60s API 未返回有效图片 URL")
             return None, None
 
         return None, image_url
@@ -561,3 +550,47 @@ class PushPlugin(Star):
 
         parts.append(f"\n共 {len(all_targets)} 个目标（已去重）")
         yield event.plain_result("\n".join(parts))
+
+    # ========== 工具方法 ==========
+
+    @staticmethod
+    def _extract_image_url(data) -> str | None:
+        """从 API 返回的 data 字段中提取有效图片 URL。
+
+        支持：
+        - data 为 str（以 http 开头）→ 直接返回
+        - data 为 list → 递归取第一个有效 http 字符串
+        - data 为 dict → 尝试常见字段 img/image/url/src，递归提取
+        - 其他 → 记录日志返回 None
+        """
+        # 字典：尝试常见图片字段
+        if isinstance(data, dict):
+            for key in ("img", "image", "url", "src", "data"):
+                if key in data:
+                    url = PushPlugin._extract_image_url(data[key])
+                    if url:
+                        return url
+            logger.warning(f"[Push] 60s API data 为对象但未找到图片字段: {data}")
+            return None
+
+        # 列表：逐个递归尝试
+        if isinstance(data, list):
+            for item in data:
+                url = PushPlugin._extract_image_url(item)
+                if url:
+                    return url
+            logger.warning(f"[Push] 60s API data 列表中未找到有效图片 URL: {data}")
+            return None
+
+        # 字符串：校验是否有效 URL
+        if isinstance(data, str):
+            s = data.strip()
+            if s.startswith(("http://", "https://")):
+                logger.info(f"[Push] 提取到图片 URL: {s}")
+                return s
+            logger.warning(f"[Push] 60s API data 不是有效 http URL: {s!r}")
+            return None
+
+        # 其他类型
+        logger.error(f"[Push] 60s API data 类型异常: {type(data).__name__}")
+        return None
