@@ -15,33 +15,13 @@
     "description": "新闻 API 地址",
     "type": "string",
     "default": "",
-    "hint": "留空使用默认 ALAPI 接口（https://v3.alapi.cn/api/zaobao）"
-  },
-  "news_api_token": {
-    "description": "ALAPI Token",
-    "type": "string",
-    "default": "",
-    "obvious_hint": true,
-    "hint": "ALAPI 平台的 Token，在 alapi.cn 注册后获取"
-  },
-  "news_format": {
-    "description": "新闻返回格式",
-    "type": "string",
-    "default": "json",
-    "options": ["json", "image"],
-    "hint": "json 返回文字格式，image 返回早报图片"
+    "hint": "留空使用默认 60s 新闻图片接口（https://v2.xxapi.cn/api/hot60s）"
   },
   "hitokoto_api_url": {
-    "description": "一言 API 地址",
+    "description": "人间语录 API 地址",
     "type": "string",
     "default": "",
-    "hint": "留空使用默认接口（https://v1.hitokoto.cn）"
-  },
-  "hitokoto_categories": {
-    "description": "一言分类",
-    "type": "string",
-    "default": "a",
-    "hint": "分类参数，多个用逗号分隔。a=全部,b=动画,c=游戏,d=文学,e=原创,f=网络,g=其他,h=影视,i=诗词,j=哲学,k=科学"
+    "hint": "留空使用默认接口（https://v2.xxapi.cn/api/renjian），返回「在人间凑数的日子」语录"
   },
   "push_targets": {
     "description": "推送目标列表",

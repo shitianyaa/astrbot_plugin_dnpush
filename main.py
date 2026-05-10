@@ -1,15 +1,12 @@
 import asyncio
 import datetime
 import os
-import tempfile
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
 
-from astrbot.api.event import MessageChain, filter, AstrMessageEvent
-from astrbot.api.message_components import Image, Plain
-from astrbot.api.star import Context, Star, register
-from astrbot.api import logger, AstrBotConfig
+from astrbot.api.all import AstrBotConfig, Context, Image, MessageChain, Plain, Star, logger
+from astrbot.api.event import AstrMessageEvent, filter
 
 try:
     CN_TZ = ZoneInfo("Asia/Shanghai")
@@ -21,8 +18,8 @@ except ZoneInfoNotFoundError:
 
 # ========== 常量 ==========
 DEFAULT_PUSH_TIME = "08:00"
-DEFAULT_NEWS_URL = "https://v3.alapi.cn/api/zaobao"
-DEFAULT_HITOKOTO_URL = "https://v1.hitokoto.cn"
+DEFAULT_NEWS_URL = "https://v2.xxapi.cn/api/hot60s"
+DEFAULT_HITOKOTO_URL = "https://v2.xxapi.cn/api/renjian"
 SCHEDULER_POLL_SECONDS = 30  # 平时轮询间隔
 SCHEDULER_COOLDOWN_SECONDS = 60  # 推送后睡过整个目标分钟，避免同分钟内重复触发
 DEFAULT_CHAIN_INTERVAL = 1.0  # 同一目标多条消息之间的默认间隔
@@ -32,7 +29,6 @@ TARGET_INTERVAL_RANGE = (0.5, 60.0)  # 目标间间隔取值范围
 KV_KEY_SUBSCRIBERS = "subscribers"
 
 
-@register("astrbot_plugin_dnpush", "shitianyaa", "每日新闻和一言定时推送插件", "1.3.0")
 class PushPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -288,19 +284,18 @@ class PushPlugin(Star):
         temp_files: list[str] = []
 
         if push_news:
-            news_text, news_img_path = await self._fetch_news()
+            news_text, news_img_url = await self._fetch_news()
             if news_text:
                 chains.append(MessageChain([Plain(f"📰 今日早报\n{news_text}")]))
-            elif news_img_path:
-                chains.append(MessageChain([Image.fromFileSystem(news_img_path)]))
-                temp_files.append(news_img_path)
+            elif news_img_url:
+                chains.append(MessageChain([Image.fromURL(news_img_url)]))
             else:
-                chains.append(MessageChain([Plain("📰 新闻获取失败，请检查 ALAPI Token 配置")]))
+                chains.append(MessageChain([Plain("📰 新闻获取失败，请检查 API 配置")]))
 
         if push_hitokoto:
             hitokoto = await self._fetch_hitokoto()
             if hitokoto:
-                chains.append(MessageChain([Plain(f"💬 一言\n{hitokoto}")]))
+                chains.append(MessageChain([Plain(f"💬 人间语录\n{hitokoto}")]))
 
         if not chains:
             self._cleanup_temp_files(temp_files)
@@ -346,114 +341,57 @@ class PushPlugin(Star):
     # ========== 数据获取 ==========
 
     async def _fetch_news(self) -> tuple[str | None, str | None]:
-        """获取 ALAPI 每日早报。
-        返回 (text, image_path)；image_path 是本地临时文件路径，由调用方负责清理。
+        """获取每日 60 秒新闻图片。
+        返回 (text, image_url)；image_url 是可直接发送的图片 URL。
         两者至少一个不为 None 表示成功。
         """
         api_url = self.config.get("news_api_url", "") or DEFAULT_NEWS_URL
-        token = self.config.get("news_api_token", "")
-        fmt = self.config.get("news_format", "json")
-
-        if not token:
-            return None, None
-
-        data = {"token": token, "format": fmt}
-        try:
-            session = self._ensure_session()
-            async with session.post(
-                api_url, data=data, timeout=aiohttp.ClientTimeout(total=15)
-            ) as resp:
-                if resp.status != 200:
-                    logger.error(f"[Push] ALAPI 返回 {resp.status}")
-                    return None, None
-
-                if fmt == "image":
-                    # ALAPI image 模式直接返回图片二进制流
-                    img_bytes = await resp.read()
-                    if not img_bytes:
-                        logger.error("[Push] ALAPI 图片响应为空")
-                        return None, None
-                    # 写入临时文件，由调用方清理
-                    fd, path = tempfile.mkstemp(prefix="dnpush_news_", suffix=".jpg")
-                    try:
-                        with os.fdopen(fd, "wb") as f:
-                            f.write(img_bytes)
-                    except Exception:
-                        if os.path.exists(path):
-                            os.remove(path)
-                        raise
-                    return None, path
-
-                result = await resp.json(content_type=None)
-        except Exception as e:
-            logger.error(f"[Push] ALAPI 请求失败: {e}")
-            return None, None
-
-        if result.get("code") != 200:
-            logger.error(f"[Push] ALAPI 错误: {result.get('msg', '未知错误')}")
-            return None, None
-
-        api_data = result.get("data", {})
-        date = api_data.get("date", "")
-        news = api_data.get("news", "")
-        weiyu = api_data.get("weiyu", "")
-
-        parts = []
-        if date:
-            parts.append(f"📅 {date}")
-        if isinstance(news, list):
-            parts.extend(str(item) for item in news)
-        elif news:
-            parts.append(news)
-        if weiyu:
-            parts.append(f"\n💡 {weiyu}")
-
-        text = "\n".join(parts) if parts else None
-        return text, None
-
-    async def _fetch_hitokoto(self) -> str | None:
-        """获取一言"""
-        api_url = self.config.get("hitokoto_api_url", "") or DEFAULT_HITOKOTO_URL
-        categories = self.config.get("hitokoto_categories", "a")
-
-        # 去重，保留首次出现顺序
-        cats_seen: dict[str, None] = {}
-        for cat in str(categories).split(","):
-            cat = cat.strip()
-            if cat and cat not in cats_seen:
-                cats_seen[cat] = None
-        params = {"c": list(cats_seen.keys())} if cats_seen else {}
 
         try:
             session = self._ensure_session()
             async with session.get(
-                api_url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+                api_url, timeout=aiohttp.ClientTimeout(total=15)
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"[Push] 60s API 返回 {resp.status}")
+                    return None, None
+                result = await resp.json(content_type=None)
+        except Exception as e:
+            logger.error(f"[Push] 60s API 请求失败: {e}")
+            return None, None
+
+        if result.get("code") != 200:
+            logger.error(f"[Push] 60s API 错误: {result.get('msg', '未知错误')}")
+            return None, None
+
+        image_url = result.get("data", "")
+        if not image_url:
+            logger.error("[Push] 60s API 未返回图片 URL")
+            return None, None
+
+        return None, image_url
+
+    async def _fetch_hitokoto(self) -> str | None:
+        """获取「在人间凑数的日子」语录"""
+        api_url = self.config.get("hitokoto_api_url", "") or DEFAULT_HITOKOTO_URL
+
+        try:
+            session = self._ensure_session()
+            async with session.get(
+                api_url, timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
                 if resp.status != 200:
                     return None
                 data = await resp.json(content_type=None)
         except Exception as e:
-            logger.error(f"[Push] 一言 API 请求失败: {e}")
+            logger.error(f"[Push] 人间语录 API 请求失败: {e}")
             return None
 
-        hitokoto = data.get("hitokoto", "")
-        source = data.get("from", "")
-        author = data.get("from_who", "")
-
-        if not hitokoto:
+        if data.get("code") != 200:
             return None
 
-        result = hitokoto
-        if source or author:
-            result += "\n"
-            if author and source:
-                result += f"——{author}《{source}》"
-            elif author:
-                result += f"——{author}"
-            elif source:
-                result += f"——《{source}》"
-
-        return result
+        quote = data.get("data", "")
+        return quote if quote else None
 
     # ========== 指令组 ==========
 
@@ -464,57 +402,48 @@ class PushPlugin(Star):
 
     @push.command("news")
     async def push_news(self, event: AstrMessageEvent):
-        """手动推送每日早报"""
-        news_text, news_img_path = await self._fetch_news()
-        try:
-            if news_text:
-                yield event.plain_result(f"📰 今日早报\n{news_text}")
-            elif news_img_path:
-                yield event.image_result(news_img_path)
-            else:
-                yield event.plain_result("新闻获取失败，请检查 ALAPI Token 配置")
-        finally:
-            if news_img_path:
-                self._cleanup_temp_files([news_img_path])
+        """手动推送每日 60 秒新闻"""
+        event.stop_event()
+        news_text, news_img_url = await self._fetch_news()
+        if news_text:
+            yield event.plain_result(f"📰 今日早报\n{news_text}")
+        elif news_img_url:
+            yield event.chain_result([Image.fromURL(news_img_url)])
+        else:
+            yield event.plain_result("📰 新闻获取失败，请检查 API 配置")
 
     async def _build_hitokoto_result(self, event: AstrMessageEvent):
         hitokoto = await self._fetch_hitokoto()
         if hitokoto:
-            return event.plain_result(f"💬 一言\n{hitokoto}")
-        return event.plain_result("一言获取失败，请检查 API 配置")
+            return event.plain_result(f"💬 人间语录\n{hitokoto}")
+        return event.plain_result("人间语录获取失败，请检查 API 配置")
 
-    @push.command("hitokoto")
+    @push.command("hitokoto", alias={"yy"})
     async def push_hitokoto(self, event: AstrMessageEvent):
-        """手动推送一言"""
-        yield await self._build_hitokoto_result(event)
-
-    @push.command("yy")
-    async def push_yy(self, event: AstrMessageEvent):
-        """手动推送一言"""
+        """手动推送人间语录"""
+        event.stop_event()
         yield await self._build_hitokoto_result(event)
 
     @push.command("all")
     async def push_all(self, event: AstrMessageEvent):
         """推送早报 + 一言"""
-        news_text, news_img_path = await self._fetch_news()
-        try:
-            if news_text:
-                yield event.plain_result(f"📰 今日早报\n{news_text}")
-            elif news_img_path:
-                yield event.image_result(news_img_path)
-            else:
-                yield event.plain_result("📰 新闻获取失败")
-        finally:
-            if news_img_path:
-                self._cleanup_temp_files([news_img_path])
+        event.stop_event()
+        news_text, news_img_url = await self._fetch_news()
+        if news_text:
+            yield event.plain_result(f"📰 今日早报\n{news_text}")
+        elif news_img_url:
+            yield event.chain_result([Image.fromURL(news_img_url)])
+        else:
+            yield event.plain_result("📰 新闻获取失败")
 
         hitokoto = await self._fetch_hitokoto()
         if hitokoto:
-            yield event.plain_result(f"💬 一言\n{hitokoto}")
+            yield event.plain_result(f"💬 人间语录\n{hitokoto}")
 
     @push.command("subscribe")
     async def push_subscribe(self, event: AstrMessageEvent):
         """订阅当前会话的定时推送"""
+        event.stop_event()
         umo = event.unified_msg_origin
         subscribers = await self.get_kv_data(KV_KEY_SUBSCRIBERS, [])
         if not isinstance(subscribers, list):
@@ -530,6 +459,7 @@ class PushPlugin(Star):
     @push.command("unsubscribe")
     async def push_unsubscribe(self, event: AstrMessageEvent):
         """取消当前会话的定时推送"""
+        event.stop_event()
         umo = event.unified_msg_origin
         subscribers = await self.get_kv_data(KV_KEY_SUBSCRIBERS, [])
         if not isinstance(subscribers, list) or umo not in subscribers:
@@ -542,6 +472,7 @@ class PushPlugin(Star):
     @push.command("schedule")
     async def push_schedule(self, event: AstrMessageEvent):
         """查看定时任务状态"""
+        event.stop_event()
         push_time = self.config.get("push_time", DEFAULT_PUSH_TIME)
         push_enabled = self.config.get("push_enabled", True)
         subscribers = await self.get_kv_data(KV_KEY_SUBSCRIBERS, [])
@@ -585,6 +516,7 @@ class PushPlugin(Star):
     @push.command("targets")
     async def push_targets(self, event: AstrMessageEvent):
         """查看所有推送目标"""
+        event.stop_event()
         subscribers = await self.get_kv_data(KV_KEY_SUBSCRIBERS, [])
         if not isinstance(subscribers, list):
             subscribers = []

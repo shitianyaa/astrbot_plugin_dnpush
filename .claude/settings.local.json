@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(git filter-branch *)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --msg-filter \"grep -v '^Co-Authored-By: Claude'\" 85f79b5..HEAD)",
+      "Bash(git commit -m 'feat: push_targets 支持每条目独立指定平台，可同时推送到多个平台 *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('main.py', encoding='utf-8'\\).read\\(\\)\\); print\\('SYNTAX OK'\\)\")",
+      "Bash(git commit -m 'refactor: 全面优化 + bug 修复 *)",
+      "Bash(git commit -m 'fix: 调度器改为严格分钟匹配，不再补推 *)",
+      "Bash(git commit -m 'chore: 移除 metadata.yaml 的 support_platforms 字段 *)",
+      "Read(//d/Python/QQBOT/astrbot_plugin_uapipro_toolbox-main/**)",
+      "Bash(python -c \"import json; json.load\\(open\\('_conf_schema.json', encoding='utf-8'\\)\\); print\\('JSON OK'\\)\")",
+      "Bash(git commit -m 'feat: 新增可配置的推送间隔（防风控） *)",
+      "Bash(git commit -m 'refactor: 删除单日单次去重逻辑，调度器改为零状态 *)"
+    ]
+  }
+}
