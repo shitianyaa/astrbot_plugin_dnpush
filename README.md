@@ -1,11 +1,11 @@
 # astrbot_plugin_dnpush
 
-AstrBot 每日新闻 + 一言定时推送插件。每天定点向指定群 / 私聊推送 ALAPI 早报和一言。
+AstrBot 每日新闻 + 人间语录定时推送插件。每天定点向指定群 / 私聊推送 60 秒新闻图片和「在人间凑数的日子」语录。
 
 ## 功能
 
-- 每日早报推送（基于 [ALAPI](https://alapi.cn)，支持文字 / 图片两种格式）
-- 一言推送（基于 [hitokoto.cn](https://hitokoto.cn)，支持分类筛选）
+- 每日 60 秒新闻图片推送（基于 [xxapi.cn](https://v2.xxapi.cn/api/hot60s)）
+- 「在人间凑数的日子」语录推送（基于 [xxapi.cn](https://v2.xxapi.cn/api/renjian)）
 - HH:MM 每日定时（北京时间，分钟级精度）
 - 群聊 / 私聊订阅命令，订阅信息持久化
 - 也可在配置里写死推送目标
@@ -14,8 +14,8 @@ AstrBot 每日新闻 + 一言定时推送插件。每天定点向指定群 / 私
 ## 安装
 
 1. 下载插件 zip 包，AstrBot WebUI → 插件管理 → 上传安装
-2. 在 [alapi.cn](https://alapi.cn) 注册获取 Token
-3. 进入插件配置页填入 `news_api_token`，按需调整 `push_time`、`push_targets` 等
+2. 进入插件配置页按需调整 `push_time`、`push_targets` 等
+3. 免费 API 无需额外配置 Token，开箱即用
 
 ## 配置项
 
@@ -23,15 +23,12 @@ AstrBot 每日新闻 + 一言定时推送插件。每天定点向指定群 / 私
 |--------|------|--------|
 | `push_enabled` | 启用定时推送（关闭后手动指令不受影响） | `true` |
 | `push_time` | 每日推送时间，格式 `HH:MM`（北京时间） | `08:00` |
-| `news_api_url` | 新闻 API 地址 | 留空使用 `https://v3.alapi.cn/api/zaobao` |
-| `news_api_token` | ALAPI Token（必填） | - |
-| `news_format` | 返回格式：`json` 文字 / `image` 图片 | `json` |
-| `hitokoto_api_url` | 一言 API 地址 | 留空使用 `https://v1.hitokoto.cn` |
-| `hitokoto_categories` | 一言分类，多个用逗号分隔 | `a` |
+| `news_api_url` | 新闻 API 地址 | 留空使用 `https://v2.xxapi.cn/api/hot60s` |
+| `hitokoto_api_url` | 人间语录 API 地址 | 留空使用 `https://v2.xxapi.cn/api/renjian` |
 | `push_targets` | 固定推送目标列表 | `[]` |
 | `platform_id` | 默认平台适配器 ID（push_targets 中未指定平台的条目使用） | 留空自动检测 |
 | `push_news` | 定时推送中是否包含新闻 | `true` |
-| `push_hitokoto` | 定时推送中是否包含一言 | `true` |
+| `push_hitokoto` | 定时推送中是否包含语录 | `true` |
 | `push_target_interval` | 不同目标间发送间隔（秒），防风控 | `1.5` |
 | `push_chain_interval` | 同一目标多条消息间隔（秒），防风控 | `1.0` |
 
@@ -61,26 +58,13 @@ aiocqhttp:GroupMessage:123       # 完整的 unified_msg_origin，原样使用
 
 | 指令 | 说明 |
 |------|------|
-| `/push news` | 手动推送一次每日早报 |
-| `/push yy` / `/push hitokoto` | 手动推送一次一言 |
-| `/push all` | 手动推送早报 + 一言 |
+| `/push news` | 手动推送一次每日 60 秒新闻图片 |
+| `/push yy` / `/push hitokoto` | 手动推送一次人间语录 |
+| `/push all` | 手动推送新闻 + 人间语录 |
 | `/push subscribe` | 在当前会话订阅每日定时推送 |
 | `/push unsubscribe` | 取消当前会话的订阅 |
 | `/push schedule` | 查看定时任务状态、下次推送时间、平台 ID 等 |
 | `/push targets` | 查看所有推送目标（配置目标 + 订阅会话） |
-
-## 一言分类
-
-| 参数 | 分类 | 参数 | 分类 |
-|------|------|------|------|
-| `a` | 全部 | `g` | 其他 |
-| `b` | 动画 | `h` | 影视 |
-| `c` | 游戏 | `i` | 诗词 |
-| `d` | 文学 | `j` | 哲学 |
-| `e` | 原创 | `k` | 科学 |
-| `f` | 网络 | | |
-
-多分类用逗号分隔，如 `a,d,i`。
 
 ## 时区说明
 
