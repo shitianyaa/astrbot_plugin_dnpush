@@ -364,7 +364,19 @@ class PushPlugin(Star):
             logger.error(f"[Push] 60s API 错误: {result.get('msg', '未知错误')}")
             return None, None
 
-        image_url = result.get("data", "")
+        data = result.get("data", "")
+        # data 可能是 str 或 list，做类型安全处理
+        if isinstance(data, list):
+            if not data:
+                logger.error("[Push] 60s API 返回空数据列表")
+                return None, None
+            image_url = str(data[0])
+        elif isinstance(data, str):
+            image_url = data
+        else:
+            logger.error(f"[Push] 60s API data 类型异常: {type(data).__name__}")
+            return None, None
+
         if not image_url:
             logger.error("[Push] 60s API 未返回图片 URL")
             return None, None
