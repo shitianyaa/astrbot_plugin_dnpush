@@ -553,21 +553,25 @@ class PushPlugin(Star):
 
     # ========== 工具方法 ==========
 
-    @staticmethod
-    def _extract_image_url(data) -> str | None:
+    _IMG_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+    @classmethod
+    def _extract_image_url(cls, data) -> str | None:
         """从 API 返回的 data 字段中提取有效图片 URL。
 
         支持：
-        - data 为 str（以 http 开头）→ 直接返回
-        - data 为 list → 递归取第一个有效 http 字符串
+        - data 为 str（以 http 开头、图片扩展名结尾）→ 直接返回
+        - data 为 list → 递归取第一个有效的图片 URL
         - data 为 dict → 尝试常见字段 img/image/url/src，递归提取
         - 其他 → 记录日志返回 None
+
+        强制校验图片扩展名，防止误匹配微博搜索等非图片链接。
         """
         # 字典：尝试常见图片字段
         if isinstance(data, dict):
             for key in ("img", "image", "url", "src", "data"):
                 if key in data:
-                    url = PushPlugin._extract_image_url(data[key])
+                    url = cls._extract_image_url(data[key])
                     if url:
                         return url
             logger.warning(f"[Push] 60s API data 为对象但未找到图片字段: {data}")
@@ -576,20 +580,26 @@ class PushPlugin(Star):
         # 列表：逐个递归尝试
         if isinstance(data, list):
             for item in data:
-                url = PushPlugin._extract_image_url(item)
+                url = cls._extract_image_url(item)
                 if url:
                     return url
             logger.warning(f"[Push] 60s API data 列表中未找到有效图片 URL: {data}")
             return None
 
-        # 字符串：校验是否有效 URL
+        # 字符串：校验是否有效图片 URL
         if isinstance(data, str):
             s = data.strip()
-            if s.startswith(("http://", "https://")):
-                logger.info(f"[Push] 提取到图片 URL: {s}")
-                return s
-            logger.warning(f"[Push] 60s API data 不是有效 http URL: {s!r}")
-            return None
+            if not s.startswith(("http://", "https://")):
+                logger.warning(f"[Push] 60s API data 不是有效 http URL: {s!r}")
+                return None
+            # 校验图片扩展名，防止误取微博等搜索链接
+            lower = s.lower()
+            has_img_ext = any(lower.endswith(ext) or (ext in lower and "?" in lower) for ext in cls._IMG_EXTS)
+            if not has_img_ext:
+                logger.warning(f"[Push] 60s API data 不是图片 URL（缺少图片扩展名）: {s!r}")
+                return None
+            logger.info(f"[Push] 提取到图片 URL: {s}")
+            return s
 
         # 其他类型
         logger.error(f"[Push] 60s API data 类型异常: {type(data).__name__}")
